@@ -1,0 +1,537 @@
+{
+  "id": "sheet-script-doc-automation",
+  "meta": {
+    "instanceId": "workflow-sheet-script",
+    "templateCredsSetupCompleted": true
+  },
+  "name": "Sheet → Script Doc Automation",
+  "tags": [
+    {
+      "id": "tag-automation",
+      "name": "automation"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "b3658a2a-5d32-45c2-9a5e-7bde9cebe201",
+      "name": "Manual Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "position": [
+        -780,
+        20
+      ],
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "e4a9574d-92b6-463f-b5e4-5813ca4b99dd",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        -540,
+        20
+      ],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sheet-url",
+              "name": "sheetUrl",
+              "type": "string",
+              "value": "https://docs.google.com/spreadsheets/d/1exampleSheetId123456789/edit#gid=0"
+            },
+            {
+              "id": "source-sheet",
+              "name": "sourceSheet",
+              "type": "string",
+              "value": "Ideas"
+            },
+            {
+              "id": "output-sheet",
+              "name": "outputSheet",
+              "type": "string",
+              "value": "Scripts"
+            },
+            {
+              "id": "folder-id",
+              "name": "folderId",
+              "type": "string",
+              "value": "1ExampleDriveFolderId123456789"
+            },
+            {
+              "id": "persona-guide",
+              "name": "defaultPersona",
+              "type": "string",
+              "value": "a confident direct-response copywriter who keeps hooks tight and actionable"
+            }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "0a0c19f5-5ef5-4eb5-881b-7f49b3867338",
+      "name": "Fetch Pending Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [
+        -280,
+        -40
+      ],
+      "parameters": {
+        "operation": "read",
+        "options": {},
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Config').item.json.sourceSheet }}"
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $('Config').item.json.sheetUrl }}"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential-id",
+          "name": "Google Sheets account"
+        }
+      },
+      "notesInFlow": true,
+      "typeVersion": 4.5
+    },
+    {
+      "id": "ad3cf1d5-2d12-4d7e-9685-f83a079f1d88",
+      "name": "Filter Pending Rows",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -60,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const pending = [];\nfor (const item of $input.all()) {\n  const hasDoc = item.json['Script Doc URL'] || item.json['Generated Doc URL'];\n  if (!hasDoc) {\n    pending.push({ json: item.json });\n  }\n}\nreturn pending;\n"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "78db1b74-0a05-437c-8e88-1a3b4d8d7de5",
+      "name": "Loop Rows",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [
+        160,
+        -40
+      ],
+      "parameters": {
+        "options": {
+          "batchSize": 1
+        }
+      },
+      "typeVersion": 3
+    },
+    {
+      "id": "c749fc10-3bbc-4d4a-9bf0-5efcce6d6c28",
+      "name": "Prepare Prompt",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        360,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const config = $('Config').item.json;\nreturn $input.all().map(item => {\n  const row = item.json;\n  const idea = row.Idea || row.Topic || `Script ${row.row_number || ''}`.trim() || 'Untitled Script';\n  const persona = row.Persona || config.defaultPersona;\n  const reference = row['Reference Doc URL'] || row['Module Doc URL'] || '';\n  const outline = row.Outline || row.Brief || row['Key Points'] || '';\n  const painPoints = row['Pain Points'] || '';\n  const title = `${idea} - Video Script`;\n  const prompt = `You are ${persona}. Write a compelling narrated video script with hook, context, persuasion, and CTA. Use any outline/pain points provided. Reference material (if any): ${reference}. Outline: ${outline}. Pain points: ${painPoints}. Output markdown with clear section headers.`;\n  return {\n    json: {\n      ...row,\n      scriptIdea: idea,\n      scriptPersona: persona,\n      referenceDoc: reference,\n      scriptTitle: title,\n      prompt\n    }\n  };\n});\n"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "f13d6a79-947d-4be3-8fe1-53bb9d9d01a9",
+      "name": "Script Writer LLM",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "position": [
+        360,
+        220
+      ],
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.6
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credential-id",
+          "name": "OpenAI account"
+        }
+      },
+      "typeVersion": 1.1
+    },
+    {
+      "id": "6d2895f8-a2ad-4f2f-b9d1-4a99875d7514",
+      "name": "Generate Script",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "position": [
+        580,
+        -40
+      ],
+      "parameters": {
+        "text": "={{ $json.prompt }}",
+        "promptType": "define"
+      },
+      "typeVersion": 1.5
+    },
+    {
+      "id": "5a20d776-3bf2-4dbe-898a-b23f2dc87fe8",
+      "name": "Create Script Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "position": [
+        800,
+        -40
+      ],
+      "parameters": {
+        "title": "={{ $json.scriptTitle }}",
+        "folderId": "={{ $('Config').item.json.folderId }}"
+      },
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "google-docs-credential-id",
+          "name": "Google Docs account"
+        }
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "2264cba9-58e4-41a2-8b99-02e2d1fa20b9",
+      "name": "Write Script Body",
+      "type": "n8n-nodes-base.googleDocs",
+      "position": [
+        1020,
+        -40
+      ],
+      "parameters": {
+        "actionsUi": {
+          "actionFields": [
+            {
+              "text": "={{ $json.text }}",
+              "action": "insert"
+            }
+          ]
+        },
+        "operation": "update",
+        "documentURL": "={{ $('Create Script Doc').item.json.id }}"
+      },
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "google-docs-credential-id",
+          "name": "Google Docs account"
+        }
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "8d59be2b-22c0-4826-9bf2-9993d582d349",
+      "name": "Append Script Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [
+        1240,
+        -40
+      ],
+      "parameters": {
+        "operation": "append",
+        "columns": {
+          "value": {
+            "Idea": "={{ $json.scriptIdea }}",
+            "Persona": "={{ $json.scriptPersona }}",
+            "Reference Doc URL": "={{ $json.referenceDoc }}",
+            "Generated Doc URL": "={{ 'https://docs.google.com/document/d/' + $('Create Script Doc').item.json.id }}",
+            "Generated At": "={{ $now.toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "Idea",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "Idea",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Persona",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "Persona",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reference Doc URL",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "Reference Doc URL",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Generated Doc URL",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "Generated Doc URL",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Generated At",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "Generated At",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ],
+          "mappingMode": "defineBelow",
+          "matchingColumns": []
+        },
+        "options": {},
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Config').item.json.outputSheet }}"
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $('Config').item.json.sheetUrl }}"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential-id",
+          "name": "Google Sheets account"
+        }
+      },
+      "typeVersion": 4.5
+    },
+    {
+      "id": "fef4b0c9-1f35-4376-95f0-0c9ccfa9a4a6",
+      "name": "Update Source Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [
+        1460,
+        -40
+      ],
+      "parameters": {
+        "operation": "update",
+        "columns": {
+          "value": {
+            "Script Doc URL": "={{ 'https://docs.google.com/document/d/' + $('Create Script Doc').item.json.id }}",
+            "Script Status": "ready",
+            "row_number": "={{ $json.row_number }}"
+          },
+          "schema": [
+            {
+              "id": "Script Doc URL",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "Script Doc URL",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Script Status",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "Script Status",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "displayName": "row_number",
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ],
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "row_number"
+          ]
+        },
+        "options": {},
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Config').item.json.sourceSheet }}"
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $('Config').item.json.sheetUrl }}"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-credential-id",
+          "name": "Google Sheets account"
+        }
+      },
+      "typeVersion": 4.5
+    },
+    {
+      "id": "cb0560a5-0990-4df4-a1ed-4ecd18c2a421",
+      "name": "Workflow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -120,
+        180
+      ],
+      "parameters": {
+        "width": 420,
+        "height": 260,
+        "content": "## How to use\n1. Set the sheet + folder IDs in the Config node.\n2. Populate the **Ideas** tab with columns such as Idea, Persona, Outline, Reference Doc URL.\n3. Run manually or trigger via cron.\n4. Each pending row generates a Google Doc, appends a log row, and updates the source row with the doc link."
+      },
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Manual Start": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Pending Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pending Rows": {
+      "main": [
+        [
+          {
+            "node": "Filter Pending Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Pending Rows": {
+      "main": [
+        [
+          {
+            "node": "Loop Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Rows": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Script Writer LLM": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Script",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Script": {
+      "main": [
+        [
+          {
+            "node": "Create Script Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Script Doc": {
+      "main": [
+        [
+          {
+            "node": "Write Script Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Script Body": {
+      "main": [
+        [
+          {
+            "node": "Append Script Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Script Row": {
+      "main": [
+        [
+          {
+            "node": "Update Source Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Source Row": {
+      "main": [
+        [
+          {
+            "node": "Loop Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
